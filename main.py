@@ -20,6 +20,8 @@
 
 import os
 import argparse
+import json
+import datetime
 from rtlsdr import RtlSdr
 from pylab import *
 import numpy as np
@@ -67,9 +69,8 @@ if __name__ == "__main__":
 
     parser.add_argument("-f", '--frequency', type=int, dest='frequency',  help="Set LTE center frequency of the channel (Hz)", default=fc)
     parser.add_argument("-g", '--gain', type=int, dest='gain',  help="Gain", default=gain)
-
     parser.add_argument("-t", "--time", type=int, dest='time', help="Seconds collecting data on LTE frequency", default=1)
-
+    parser.add_argument("-j", '--json-file', dest='json', type=str,  help="Set the json file where results will be written", default=None)
     parser.add_argument("-d", '--debug', dest='debug',  help="enable debug mode with plots", action='store_true', default=False)
     args = parser.parse_args()
 
@@ -126,6 +127,7 @@ if __name__ == "__main__":
     iters = int(ceil(TOTAL_BUFFER_SIZE/AUX_BUFFER_SIZE))
 
     print("[LTESSTRACK] Reading for %d seconds at %d MHz with gain=%d ... " % (args.time, args.frequency, args.gain))
+    acq_time = datetime.datetime.now()
 
     for i in range(0,iters):
         sr = sdr.readStream(rxStream, [rxBuff], len(rxBuff))
@@ -152,4 +154,20 @@ if __name__ == "__main__":
     # Get drift by analyzing the PSS time of arrival
     [PPM, delta_f] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
 
-    print("[LTESSTRACK] Local Oscilator error: %.8f PPM - [%.2f Hz]\n" % (PPM,delta_f))
+    print("[LTESSTRACK] Local oscilator error: %.8f PPM - [%.2f Hz]" % (PPM,delta_f))
+
+    if (args.json):
+        data={}
+        data['datetime']=str(acq_time)
+        data['type']=args_sdr["label"] + " "  +args_sdr["driver"]
+        data['fc']=args.frequency
+        data['gain']=args.gain
+        data['fs']=fs
+        data['sampling_time']=args.time
+        data['ppm']=PPM
+        data['confidence']=0
+
+        with open(args.json, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+
+        print("[LTESSTRACK] Results saved in " + args.json)
