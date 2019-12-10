@@ -167,7 +167,7 @@ def get_drift (iq, z_sequences, preamble, pss_step, search_window, resample_fact
 
         th_learned=(tmp_sorted[preamble] + tmp_sorted[preamble*2+1])/2
         th_learned=th_learned*0.70
-        print("th_learned[seq=%d]: %.2f" % (i,th_learned))
+        #print("th_learned[seq=%d]: %.2f" % (i,th_learned))
         x = np.resize(data[i],len(data[i]),)
 
         peaks, _ = signal.find_peaks(x[0:training_samples], distance=(pss_step-search_window), height=th_learned)
@@ -179,9 +179,9 @@ def get_drift (iq, z_sequences, preamble, pss_step, search_window, resample_fact
             th_win = th_learned
 
 
-    print("Winning sequence: " + str(seq))
+    #print("Winning sequence: " + str(seq))
     if ( len ( np.where (abs(diff(peaks)-pss_step) > 10 )[0]) > 0 ):
-        print("[WARNING] Some PSS detected are further than %d +- 10 I/Q samples\n" % (pss_step))
+        print("[LTESSTRACK] Warning: Some PSS detected are further than %d +- 10 I/Q samples" % (pss_step))
 
 
     if (debug_plot):
@@ -195,8 +195,8 @@ def get_drift (iq, z_sequences, preamble, pss_step, search_window, resample_fact
 
     # We assume peaks are properly located if they are in a range of 10 samples from the expected position
     valid_peaks = np.where ((np.diff(l_peaks)-pss_step) < 10)
-    if (len(valid_peaks)==0):
-            print('[ERROR] No valid PSS at the begining, skipping file\n')
+    if ( len(valid_peaks)==0 or len(valid_peaks[0])==0 ):
+            print('[LTESSTRACK] Error: No valid PSS at the begining.')
             sys.exit(-1)
 
     last_valid_peak = l_peaks[valid_peaks[0][-1]+1]

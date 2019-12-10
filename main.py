@@ -19,6 +19,7 @@
 #
 
 import os
+import argparse
 from rtlsdr import RtlSdr
 from pylab import *
 import numpy as np
@@ -45,6 +46,7 @@ def get_zadoof_seqs (filename):
 
 
 # Constants
+VERSION="0.1-rc1"
 RESAMPLE_FACTOR = 20
 PSS_STEP = 9600
 SEARCH_WINDOW = 150
@@ -57,67 +59,97 @@ chan=0
 gain=30
 
 AUX_BUFFER_SIZE = 20*1024
-TOTAL_BUFFER_SIZE = int(fs*1) # 1 second of data
 
-# Look at for SDR devices
-sdr_list = SoapySDR.Device.enumerate()
-index=0
-sdr_devices = []
-print("")
-print("Available SDR devices: ")
-for sdr in sdr_list:
-    if sdr["driver"]=="audio":
-        pass
-    else:
-        print("   - [%d] %s (%s)" % (index, sdr["label"], sdr["driver"]) )
-        sdr_devices.append(sdr)
-        index=index+1
 
-try:
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+
+    parser.add_argument("-f", '--frequency', type=int, dest='frequency',  help="Set LTE center frequency of the channel (Hz)", default=fc)
+    parser.add_argument("-g", '--gain', type=int, dest='gain',  help="Gain", default=gain)
+
+    parser.add_argument("-t", "--time", type=int, dest='time', help="Seconds collecting data on LTE frequency", default=1)
+
+    parser.add_argument("-d", '--debug', dest='debug',  help="enable debug mode with plots", action='store_true', default=False)
+    args = parser.parse_args()
+
+    print("#########################################")
+    print("#      = pyLTESS-Track v" + VERSION + " =       #")
+    print("#                                       #")
+    print("# A precise and fast frequency offset   #")
+    print("# estimation for low-cost SDR platforms #")
+    print("# -- The Electrosense Team              #")
+    print("########################################")
+
+    fc = args.frequency
+    gain = args.gain
+    sampling_time = args.time
+
+    # Look at for SDR devices
+    sdr_list = SoapySDR.Device.enumerate()
+    index=0
+    sdr_devices = []
     print("")
-    sdr_index=int(input('Choose SDR device [0-' + str(len(sdr_devices)-1) + ']: ' ))
-except ValueError:
-    print("[Error] You must enter a number of the list")
-    sys.exit(-1)
+    print("Available SDR devices: ")
+    for sdr in sdr_list:
+        if sdr["driver"]=="audio":
+            pass
+        else:
+            print("   - [%d] %s (%s)" % (index, sdr["label"], sdr["driver"]) )
+            sdr_devices.append(sdr)
+            index=index+1
 
-args = sdr_devices[sdr_index]
+    try:
+        print("")
+        sdr_index=int(input('Choose SDR device [0-' + str(len(sdr_devices)-1) + ']: ' ))
+    except ValueError:
+        print("[Error] You must enter a number of the list")
+        sys.exit(-1)
 
-# Set SDR and read samples
-sdr = SoapySDR.Device(args)
-sdr.setSampleRate(SOAPY_SDR_RX, chan, int(fs))
-sdr.setBandwidth(SOAPY_SDR_RX, chan, int(fs))
-sdr.setFrequency(SOAPY_SDR_RX, chan, int(fc))
-sdr.setGain(SOAPY_SDR_RX,chan,gain)
+    args_sdr = sdr_devices[sdr_index]
 
-rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, [chan])
-sdr.activateStream(rxStream)
+    # Set SDR and read samples
+    sdr = SoapySDR.Device(args_sdr)
+    sdr.setSampleRate(SOAPY_SDR_RX, chan, int(fs))
+    sdr.setBandwidth(SOAPY_SDR_RX, chan, int(fs))
+    sdr.setFrequency(SOAPY_SDR_RX, chan, int(fc))
+    sdr.setGain(SOAPY_SDR_RX,chan,gain)
 
-rxBuffs = np.array([], np.complex64)
-rxBuff = np.array([0]*AUX_BUFFER_SIZE, np.complex64)
+    rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, [chan])
+    sdr.activateStream(rxStream)
 
-iters = int(ceil(TOTAL_BUFFER_SIZE/AUX_BUFFER_SIZE))
+    rxBuffs = np.array([], np.complex64)
+    rxBuff = np.array([0]*AUX_BUFFER_SIZE, np.complex64)
 
-for i in range(0,iters):
-    sr = sdr.readStream(rxStream, [rxBuff], len(rxBuff))
+    TOTAL_BUFFER_SIZE = int(fs*args.time) # 1 second of data
 
-    if sr.ret > 0:
-        rxBuffs = np.concatenate((rxBuffs, rxBuff[:sr.ret]))
+    iters = int(ceil(TOTAL_BUFFER_SIZE/AUX_BUFFER_SIZE))
 
-sdr.deactivateStream(rxStream)
-sdr.closeStream(rxStream)
+    print("[LTESSTRACK] Reading for %d seconds at %d MHz with gain=%d ... " % (args.time, args.frequency, args.gain))
 
-samples = rxBuffs
+    for i in range(0,iters):
+        sr = sdr.readStream(rxStream, [rxBuff], len(rxBuff))
 
-# use matplotlib to estimate and plot the PSD
-psd(samples, NFFT=1024, Fs=fs/1e6, Fc=fc/1e6)
-xlabel('Frequency (MHz)')
-ylabel('Relative power (dB)')
-show()
+        if sr.ret > 0:
+            rxBuffs = np.concatenate((rxBuffs, rxBuff[:sr.ret]))
 
-# load zadoof sequences (in time)
-Z_sequences = np.array([get_zadoof_seqs("lte/25-Zadoff.bin"),get_zadoof_seqs("lte/29-Zadoff.bin"),get_zadoof_seqs("lte/34-Zadoff.bin")])
+    sdr.deactivateStream(rxStream)
+    sdr.closeStream(rxStream)
 
-# Get drift by analyzing the PSS time of arrival
-[PPM, delta_f] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=True)
+    samples = rxBuffs
 
-print("Local Oscilator error: %.8f PPM - %.2f Hz\n" % (PPM,delta_f))
+    if (args.debug):
+        # use matplotlib to estimate and plot the PSD
+        psd(samples, NFFT=1024, Fs=fs/1e6, Fc=fc/1e6)
+        xlabel('Frequency (MHz)')
+        ylabel('Relative power (dB)')
+        show()
+
+    print("[LTESSTRACK] Estimating local oscilator error .... ")
+    # load zadoof sequences (in time)
+    Z_sequences = np.array([get_zadoof_seqs("lte/25-Zadoff.bin"),get_zadoof_seqs("lte/29-Zadoff.bin"),get_zadoof_seqs("lte/34-Zadoff.bin")])
+
+    # Get drift by analyzing the PSS time of arrival
+    [PPM, delta_f] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
+
+    print("[LTESSTRACK] Local Oscilator error: %.8f PPM - [%.2f Hz]\n" % (PPM,delta_f))
