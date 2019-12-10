@@ -52,7 +52,7 @@ VERSION="0.1-rc1"
 RESAMPLE_FACTOR = 20
 PSS_STEP = 9600
 SEARCH_WINDOW = 150
-PREAMBLE=20
+PREAMBLE=30
 
 # variables
 fs=1.92e6
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     print("# estimation for low-cost SDR platforms #")
     print("#                                       #")
     print("# -- The Electrosense Team              #")
-    print("########################################")
+    print("#########################################")
 
     fc = args.frequency
     gain = args.gain
@@ -93,6 +93,7 @@ if __name__ == "__main__":
     sdr_devices = []
     print("")
     print("Available SDR devices: ")
+
     for sdr in sdr_list:
         if sdr["driver"]=="audio":
             pass
@@ -100,6 +101,10 @@ if __name__ == "__main__":
             print("   - [%d] %s (%s)" % (index, sdr["label"], sdr["driver"]) )
             sdr_devices.append(sdr)
             index=index+1
+
+    if (len(sdr_devices)==0):
+        print("[LTESSTRACK] Error, no devices found!")
+        exit(-1)
 
     try:
         print("")
@@ -161,8 +166,8 @@ if __name__ == "__main__":
         data={}
         data['datetime']=str(acq_time)
         data['type']=args_sdr["label"] + " "  +args_sdr["driver"]
-        data['fc']=args.frequency        
-        data['fs']=fs
+        data['fc']=args.frequency
+        data['fs']=int(fs)
         data['gain']=args.gain
         data['sampling_time']=args.time
         data['ppm']=PPM

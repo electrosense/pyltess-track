@@ -24,6 +24,8 @@ from scipy import signal
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
 
+scaler = MinMaxScaler(feature_range=(0, 1))
+
 # get_peaks: get PSS peaks jumping from the last position known that was a valid peak
 # Output:
 #   - peaksV: vector with the correlation value of the peaks found
@@ -44,13 +46,13 @@ def get_peaks (iq, pss_step, search_window, resample_factor, z_sequence, th_corr
 
         slice = iq[start_i:end_i]
 
-        scaler = MinMaxScaler(feature_range=(0, 1))
+        #scaler = MinMaxScaler(feature_range=(0, 1))
 
         # Correlation between template and slice signal
         res_corr = abs(signal.correlate(slice, z_sequence))
         # Normalization
         res_corr = np.reshape((res_corr), (-1, 1))
-        res_corr = scaler.fit_transform(res_corr)
+        res_corr = scaler.transform(res_corr)
         # Trick to speed up the whole process.
         # Upsampling the correlaiton result (thanks Fabio!)
         res_corr_up = signal.resample(res_corr, len(res_corr)*resample_factor)
@@ -61,7 +63,7 @@ def get_peaks (iq, pss_step, search_window, resample_factor, z_sequence, th_corr
 
 
         if (len(peaks) == 0):
-            print("[WARNING] No peak detected, corr_factor=%.2f\n" % th_corr);
+            #print("[WARNING] No peak detected, corr_factor=%.2f\n" % th_corr);
             peak_list.append(None)
         else:
             p = start_i + (peaks[0])/resample_factor -1;
@@ -97,14 +99,19 @@ def get_peaks (iq, pss_step, search_window, resample_factor, z_sequence, th_corr
 
 def analyze_drift (peaks, pss_step, degree, debug_plot = False ):
 
-    pss_detected = peaks - peaks[0]
-
+    pss_detected = peaks# - peaks[0]
     x = np.array(list(range(0,len(peaks))))
+    index_nones=[i for i,v in enumerate(pss_detected) if v == None]
+    #index_nones=sorted(index_nones, reverse=True)
 
+    x = np.delete(x, index_nones)
+    pss_detected = np.delete(pss_detected, index_nones)
+
+    pss_detected = pss_detected - pss_detected[0]
     cumm_drift = pss_detected - x*pss_step
 
-    p = np.polyfit(x,cumm_drift,1)
-    y = np.polyval(p,x)
+    p = np.polyfit(x.tolist(),cumm_drift.tolist(),1)
+    y = np.polyval(p,x.tolist())
 
     PPM= ((y[-1]-y[0])/((x[-1]-x[0])*pss_step))*1e6;
 
@@ -118,6 +125,7 @@ def analyze_drift (peaks, pss_step, degree, debug_plot = False ):
         plt.ylabel('cumm drift (IQ samples)')
         plt.legend(fontsize=15)
         plt.grid(True)
+        plt.show()
 
 
     return PPM
@@ -140,7 +148,7 @@ def get_drift (iq, z_sequences, preamble, pss_step, search_window, resample_fact
     corr=np.append(corr, [np.array(signal.correlate(iq[:training_samples], (z_sequences[2])))],0)
 
     # Normalize correlation
-    scaler = MinMaxScaler(feature_range=(0, 1))
+    #scaler = MinMaxScaler(feature_range=(0, 1))
 
 
     data = ([np.reshape(abs(corr[0]), (-1, 1))])
@@ -200,15 +208,17 @@ def get_drift (iq, z_sequences, preamble, pss_step, search_window, resample_fact
             sys.exit(-1)
 
     last_valid_peak = l_peaks[valid_peaks[0][-1]+1]
-
     pss_detected = get_peaks(iq[last_valid_peak:], pss_step, search_window, resample_factor, z_sequences[seq], th_win, False)
 
+    #print(pss_detected)
+    #print(diff(pss_detected))
     # ideal pss detection in the given time
     total_pss = int(len(iq)/pss_step) - int(last_valid_peak/pss_step)
+    index_nones=[i for i,v in enumerate(pss_detected) if v == None]
+    nan_pss = len(index_nones)
+    confidence = (len(pss_detected) -nan_pss) / total_pss
 
-    confidence = len(pss_detected) / total_pss
-
-    PPM = analyze_drift(pss_detected, pss_step, 1, True)
+    PPM = analyze_drift(pss_detected, pss_step, 1, debug_plot)
 
     delta_f=(PPM*1e-6)*fs;
 
