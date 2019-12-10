@@ -203,8 +203,13 @@ def get_drift (iq, z_sequences, preamble, pss_step, search_window, resample_fact
 
     pss_detected = get_peaks(iq[last_valid_peak:], pss_step, search_window, resample_factor, z_sequences[seq], th_win, False)
 
+    # ideal pss detection in the given time
+    total_pss = int(len(iq)/pss_step) - int(last_valid_peak/pss_step)
+
+    confidence = len(pss_detected) / total_pss
+
     PPM = analyze_drift(pss_detected, pss_step, 1, True)
 
     delta_f=(PPM*1e-6)*fs;
 
-    return PPM, delta_f
+    return PPM, delta_f, confidence

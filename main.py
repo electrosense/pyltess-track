@@ -79,6 +79,7 @@ if __name__ == "__main__":
     print("#                                       #")
     print("# A precise and fast frequency offset   #")
     print("# estimation for low-cost SDR platforms #")
+    print("#                                       #")
     print("# -- The Electrosense Team              #")
     print("########################################")
 
@@ -122,14 +123,14 @@ if __name__ == "__main__":
     rxBuffs = np.array([], np.complex64)
     rxBuff = np.array([0]*AUX_BUFFER_SIZE, np.complex64)
 
-    TOTAL_BUFFER_SIZE = int(fs*args.time) # 1 second of data
+    TOTAL_BUFFER_SIZE = int(fs*args.time)
 
-    iters = int(ceil(TOTAL_BUFFER_SIZE/AUX_BUFFER_SIZE))
+    iters = int(ceil(TOTAL_BUFFER_SIZE/AUX_BUFFER_SIZE)) +1
 
     print("[LTESSTRACK] Reading for %d seconds at %d MHz with gain=%d ... " % (args.time, args.frequency, args.gain))
     acq_time = datetime.datetime.now()
 
-    for i in range(0,iters):
+    while (len(rxBuffs) < TOTAL_BUFFER_SIZE):
         sr = sdr.readStream(rxStream, [rxBuff], len(rxBuff))
 
         if sr.ret > 0:
@@ -152,20 +153,20 @@ if __name__ == "__main__":
     Z_sequences = np.array([get_zadoof_seqs("lte/25-Zadoff.bin"),get_zadoof_seqs("lte/29-Zadoff.bin"),get_zadoof_seqs("lte/34-Zadoff.bin")])
 
     # Get drift by analyzing the PSS time of arrival
-    [PPM, delta_f] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
+    [PPM, delta_f, confidence] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
 
-    print("[LTESSTRACK] Local oscilator error: %.8f PPM - [%.2f Hz]" % (PPM,delta_f))
+    print("[LTESSTRACK] Local oscilator error: %.8f PPM - [%.2f Hz], confidence=%.3f" % (PPM,delta_f,confidence))
 
     if (args.json):
         data={}
         data['datetime']=str(acq_time)
         data['type']=args_sdr["label"] + " "  +args_sdr["driver"]
-        data['fc']=args.frequency
-        data['gain']=args.gain
+        data['fc']=args.frequency        
         data['fs']=fs
+        data['gain']=args.gain
         data['sampling_time']=args.time
         data['ppm']=PPM
-        data['confidence']=0
+        data['confidence']=confidence
 
         with open(args.json, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
