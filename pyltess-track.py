@@ -22,22 +22,20 @@ import os
 import argparse
 import json
 import datetime
+import numpy as np
+import matplotlib.pyplot as plt
+import SoapySDR
+
 from rtlsdr import RtlSdr
 from pylab import *
-import numpy as np
 from scipy import signal
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
-
-import SoapySDR
 from SoapySDR import * #SOAPY_SDR_ constants
 
-from pssdrift import *
-import soapy_log_handle
+from foc.pssdrift import *
 
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
-
 
  # Load Zadoof sequencies
 def get_zadoof_seqs (filename):
@@ -48,7 +46,7 @@ def get_zadoof_seqs (filename):
 
 
 # Constants
-VERSION="0.1-rc1"
+VERSION="1.0-rc1"
 RESAMPLE_FACTOR = 20
 PSS_STEP = 9600
 SEARCH_WINDOW = 150
@@ -62,7 +60,6 @@ gain=30
 source=-1
 
 AUX_BUFFER_SIZE = 20*1024
-
 
 if __name__ == "__main__":
 
@@ -162,8 +159,16 @@ if __name__ == "__main__":
         show()
 
     print("[LTESSTRACK] Estimating local oscilator error .... ")
+
     # load zadoof sequences (in time)
-    Z_sequences = np.array([get_zadoof_seqs("lte/25-Zadoff.bin"),get_zadoof_seqs("lte/29-Zadoff.bin"),get_zadoof_seqs("lte/34-Zadoff.bin")])
+    try:
+        Z_sequences = np.array([get_zadoof_seqs("lte/25-Zadoff.bin"), \
+        get_zadoof_seqs("lte/29-Zadoff.bin"),\
+        get_zadoof_seqs("lte/34-Zadoff.bin")])
+    except FileNotFoundError:
+        Z_sequences = np.array([get_zadoof_seqs("/usr/share/pyltesstrack/lte/25-Zadoff.bin"), \
+        get_zadoof_seqs("/usr/share/pyltesstrack/lte/29-Zadoff.bin"),\
+        get_zadoof_seqs("/usr/share/pyltesstrack/lte/34-Zadoff.bin")])
 
     # Get drift by analyzing the PSS time of arrival
     [PPM, delta_f, confidence] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
