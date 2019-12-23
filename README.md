@@ -112,3 +112,10 @@ $ pyltess-track.py -s 0 -f 806000000 -t 2 -j ./foc-sdr.json
     "confidence": 0.9973045822102425
 }
 ```
+
+## Deploy
+
+* Create debian package
+```
+$ python3 setup.py --command-packages=stdeb.command bdist_deb
+```
