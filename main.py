@@ -1,6 +1,6 @@
 #!/usr/bin/python
 #
-#   Copyright (C) Electrosense 2019
+#   Copyright (C) IMDEA Networks Institute 2019
 #   This program is free software: you can redistribute it and/or modify
 #
 #   it under the terms of the GNU General Public License as published by
@@ -59,6 +59,7 @@ fs=1.92e6
 fc=806e6
 chan=0
 gain=30
+source=-1
 
 AUX_BUFFER_SIZE = 20*1024
 
@@ -67,6 +68,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
+    parser.add_argument("-s", '--source', type=int, dest='source', help="Set default SDR source device to use", default=source)
     parser.add_argument("-f", '--frequency', type=int, dest='frequency',  help="Set LTE center frequency of the channel (Hz)", default=fc)
     parser.add_argument("-g", '--gain', type=int, dest='gain',  help="Gain", default=gain)
     parser.add_argument("-t", "--time", type=int, dest='time', help="Seconds collecting data on LTE frequency", default=1)
@@ -108,13 +110,19 @@ if __name__ == "__main__":
 
     try:
         print("")
-        sdr_index=int(input('Choose SDR device [0-' + str(len(sdr_devices)-1) + ']: ' ))
+        if (args.source == -1):
+            sdr_index=int(input('Choose SDR device [0-' + str(len(sdr_devices)-1) + ']: ' ))
+        else:
+            if (args.source > index-1):
+                print("[LTESSTRACK] Error: SDR Device index not found (max=%d)" % (index-1))
+                exit(-1)
+            sdr_index=args.source
     except ValueError:
-        print("[Error] You must enter a number of the list")
+        print("[Error] Wrong SDR device index.")
         sys.exit(-1)
 
     args_sdr = sdr_devices[sdr_index]
-
+    print("[LTESSTRACK] SDR device selected: " + args_sdr['driver'] + " - " + args_sdr['label'])
     # Set SDR and read samples
     sdr = SoapySDR.Device(args_sdr)
     sdr.setSampleRate(SOAPY_SDR_RX, chan, int(fs))
