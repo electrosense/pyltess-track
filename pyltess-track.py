@@ -25,6 +25,7 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import SoapySDR
+import time
 
 from rtlsdr import RtlSdr
 from pylab import *
@@ -48,10 +49,11 @@ def get_zadoof_seqs (filename):
 # Constants
 VERSION="1.0-rc1"
 RESAMPLE_FACTOR = 20
-PSS_STEP = 9600
+PSS_STEP = 9600*2
 SEARCH_WINDOW = 150
 PREAMBLE=30
 
+FILE_LONG_STUDY="/tmp/pyltess-track-long.csv"
 # variables
 fs=1.92e6
 fc=806e6
@@ -70,6 +72,7 @@ if __name__ == "__main__":
     parser.add_argument("-g", '--gain', type=int, dest='gain',  help="Gain", default=gain)
     parser.add_argument("-t", "--time", type=int, dest='time', help="Seconds collecting data on LTE frequency", default=1)
     parser.add_argument("-j", '--json-file', dest='json', type=str,  help="Set the json file where results will be written", default=None)
+    parser.add_argument("-l", '--long', type=int, dest='long',  help="Set N measurements for long frequency offset analysis", default=1)
     parser.add_argument("-d", '--debug', dest='debug',  help="enable debug mode with plots", action='store_true', default=False)
     args = parser.parse_args()
 
@@ -130,50 +133,61 @@ if __name__ == "__main__":
     rxStream = sdr.setupStream(SOAPY_SDR_RX, SOAPY_SDR_CF32, [chan])
     sdr.activateStream(rxStream)
 
-    rxBuffs = np.array([], np.complex64)
-    rxBuff = np.array([0]*AUX_BUFFER_SIZE, np.complex64)
-
     TOTAL_BUFFER_SIZE = int(fs*args.time)
 
-    iters = int(ceil(TOTAL_BUFFER_SIZE/AUX_BUFFER_SIZE)) +1
+    N_iter = args.long
+    long_results = [];
 
-    print("[LTESSTRACK] Reading for %d seconds at %d MHz with gain=%d ... " % (args.time, args.frequency, args.gain))
-    acq_time = datetime.datetime.now()
+    for i in range(0,N_iter):
 
-    while (len(rxBuffs) < TOTAL_BUFFER_SIZE):
-        sr = sdr.readStream(rxStream, [rxBuff], len(rxBuff))
+        rxBuffs = np.array([], np.complex64)
+        rxBuff = np.array([0]*AUX_BUFFER_SIZE, np.complex64)
 
-        if sr.ret > 0:
-            rxBuffs = np.concatenate((rxBuffs, rxBuff[:sr.ret]))
+        iters = int(ceil(TOTAL_BUFFER_SIZE/AUX_BUFFER_SIZE)) +1
 
-    sdr.deactivateStream(rxStream)
-    sdr.closeStream(rxStream)
+        print("[LTESSTRACK] [%d/%d] Reading for %d seconds at %d MHz with gain=%d ... " % (i+1,N_iter,args.time, args.frequency, args.gain))
+        acq_time = datetime.datetime.now()
 
-    samples = rxBuffs
+        while (len(rxBuffs) < TOTAL_BUFFER_SIZE):
+            sr = sdr.readStream(rxStream, [rxBuff], len(rxBuff))
 
-    if (args.debug):
-        # use matplotlib to estimate and plot the PSD
-        psd(samples, NFFT=1024, Fs=fs/1e6, Fc=fc/1e6)
-        xlabel('Frequency (MHz)')
-        ylabel('Relative power (dB)')
-        show()
+            if sr.ret > 0:
+                rxBuffs = np.concatenate((rxBuffs, rxBuff[:sr.ret]))
 
-    print("[LTESSTRACK] Estimating local oscilator error .... ")
+        if (i==N_iter-1):
+            sdr.deactivateStream(rxStream)
+            sdr.closeStream(rxStream)
 
-    # load zadoof sequences (in time)
-    try:
-        Z_sequences = np.array([get_zadoof_seqs("lte/25-Zadoff.bin"), \
-        get_zadoof_seqs("lte/29-Zadoff.bin"),\
-        get_zadoof_seqs("lte/34-Zadoff.bin")])
-    except FileNotFoundError:
-        Z_sequences = np.array([get_zadoof_seqs("/usr/share/pyltesstrack/lte/25-Zadoff.bin"), \
-        get_zadoof_seqs("/usr/share/pyltesstrack/lte/29-Zadoff.bin"),\
-        get_zadoof_seqs("/usr/share/pyltesstrack/lte/34-Zadoff.bin")])
+        samples = rxBuffs
 
-    # Get drift by analyzing the PSS time of arrival
-    [PPM, delta_f, confidence] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
+        if (args.debug):
+            # use matplotlib to estimate and plot the PSD
+            psd(samples, NFFT=1024, Fs=fs/1e6, Fc=fc/1e6)
+            xlabel('Frequency (MHz)')
+            ylabel('Relative power (dB)')
+            show()
 
-    print("[LTESSTRACK] Local oscilator error: %.8f PPM - [%.2f Hz], confidence=%.3f" % (PPM,delta_f,confidence))
+        print("[LTESSTRACK] Estimating local oscilator error .... ")
+
+        # load zadoof sequences (in time)
+        try:
+            Z_sequences = np.array([get_zadoof_seqs("lte/25-Zadoff.bin"), \
+            get_zadoof_seqs("lte/29-Zadoff.bin"),\
+            get_zadoof_seqs("lte/34-Zadoff.bin")])
+        except FileNotFoundError:
+            Z_sequences = np.array([get_zadoof_seqs("/usr/share/pyltesstrack/lte/25-Zadoff.bin"), \
+            get_zadoof_seqs("/usr/share/pyltesstrack/lte/29-Zadoff.bin"),\
+            get_zadoof_seqs("/usr/share/pyltesstrack/lte/34-Zadoff.bin")])
+
+        # Get drift by analyzing the PSS time of arrival
+        [PPM, delta_f, confidence] = get_drift(samples, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
+
+        print("[LTESSTRACK] Local oscilator error: %.8f PPM - [%.2f Hz], confidence=%.3f" % (PPM,delta_f,confidence))
+        print("")
+
+        if (args.long > 1):
+            long_results.append([time.time(), PPM, confidence])
+            np.savetxt(FILE_LONG_STUDY, long_results, delimiter=",", fmt='%10.6f')
 
     if (args.json):
         data={}
@@ -190,3 +204,6 @@ if __name__ == "__main__":
             json.dump(data, f, ensure_ascii=False, indent=4)
 
         print("[LTESSTRACK] Results saved in " + args.json)
+
+    if (args.long > 1):
+        print("[LTESSTRACK] Long study results saved in " + FILE_LONG_STUDY)
