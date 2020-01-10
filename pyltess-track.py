@@ -73,6 +73,7 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--time", type=int, dest='time', help="Seconds collecting data on LTE frequency", default=1)
     parser.add_argument("-j", '--json-file', dest='json', type=str,  help="Set the json file where results will be written", default=None)
     parser.add_argument("-l", '--long', type=int, dest='long',  help="Set N measurements for long frequency offset analysis", default=1)
+    parser.add_argument("-c", '--correct', dest='correct',  help="correct PPM and compute FOC again (testing)", action='store_true', default=False)
     parser.add_argument("-d", '--debug', dest='debug',  help="enable debug mode with plots", action='store_true', default=False)
     args = parser.parse_args()
 
@@ -188,6 +189,21 @@ if __name__ == "__main__":
         if (args.long > 1):
             long_results.append([time.time(), PPM, confidence])
             np.savetxt(FILE_LONG_STUDY, long_results, delimiter=",", fmt='%10.6f')
+
+        if (args.correct):
+            samples_corrected = - int(round(PPM*len(samples)/1e6))
+            print("Samples corrected: %d" % (samples_corrected))
+            s_corrected = signal.resample(samples, len(samples)+samples_corrected)
+            [PPM, delta_f, confidence] = get_drift(s_corrected, Z_sequences, PREAMBLE, PSS_STEP, SEARCH_WINDOW, RESAMPLE_FACTOR, fs, debug_plot=args.debug)
+            print("[LTESSTRACK] Local oscilator error: %.8f PPM - [%.2f Hz], confidence=%.3f" % (PPM,delta_f,confidence))
+
+            plt.figure(figsize=(14,5))
+            plt.plot(abs(samples[200000:200000+500]), marker='o', linestyle='--', label="original")
+            plt.plot(abs(s_corrected[200000:200000+500]),  marker='x', linestyle='-.', label="upsampled")
+            plt.legend()
+            plt.grid(True)
+            plt.show()
+
 
     if (args.json):
         data={}
